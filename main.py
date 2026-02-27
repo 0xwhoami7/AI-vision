@@ -3,6 +3,7 @@ import eel
 import time
 import threading
 import requests
+import re
 from config import Config
 from PIL import Image
 import io
@@ -11,11 +12,14 @@ import google.generativeai as gai
 
 gai.configure(api_key=Config['API-KEY'])
 model = gai.GenerativeModel("gemini-1.5-flash")
+REQUEST_TIMEOUT_SECONDS = 8
+MAX_COMMAND_LENGTH = 300
 
 def get_location_from_ip():
     try:
-        ip_info_url = "http://ipinfo.io"
-        response = requests.get(ip_info_url)
+        ip_info_url = "https://ipinfo.io"
+        response = requests.get(ip_info_url, timeout=REQUEST_TIMEOUT_SECONDS)
+        response.raise_for_status()
         data = response.json()
         
         # Extract location data
@@ -24,7 +28,7 @@ def get_location_from_ip():
         longitude = location[1]
         
         return latitude, longitude
-    except Exception as e:
+    except (requests.RequestException, KeyError, ValueError) as e:
         print(f"Error: {e}")
         return None, None
 
@@ -54,9 +58,18 @@ def vision():
 
 @eel.expose
 def process_command(command: str):
+    if not isinstance(command, str):
+        return "Invalid command format."
+
+    safe_command = re.sub(r"[\x00-\x1f\x7f]", "", command).strip()
+    if not safe_command:
+        return "Please provide a valid voice command."
+    if len(safe_command) > MAX_COMMAND_LENGTH:
+        return "Command is too long. Please keep it under 300 characters."
+
     frame = get_video_frame()
     if frame is not None:
-        response = process_frame_with_gemini(frame, command)
+        response = process_frame_with_gemini(frame, safe_command)
         return response
     return "Failed to capture frame."
 
@@ -78,7 +91,13 @@ def start_weather_updates():
         headers = {'X-Api-Key': Config['API_KEY_weather']}
         params = {'lat': lat, 'lon': lon}
 
-        response = requests.get(weather_api_url, headers=headers, params=params)
+        response = requests.get(
+            weather_api_url,
+            headers=headers,
+            params=params,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
         data = response.json()
         weather_data = {
             'temp': data.get('temp', 'N/A'),
@@ -89,9 +108,9 @@ def start_weather_updates():
             'sunset': convert_unix_to_time(data.get('sunset', 0))   
         }
         eel.update_weather(weather_data)
-    except Exception as e:
+    except (requests.RequestException, ValueError, TypeError) as e:
         print(f"Error: {e}")
-        eel.update_weather_error(f"Error fetching weather data:")
+        eel.update_weather_error("Unable to fetch weather data right now.")
 
 def convert_unix_to_time(timestamp):
     dt_object = datetime.fromtimestamp(timestamp)
