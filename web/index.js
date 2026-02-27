@@ -12,11 +12,14 @@ if (SpeechRecognition && synth) {
 
     recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript;
-        responseDiv.innerHTML = `You said: ${transcript}`;
+        responseDiv.textContent = `You said: ${transcript}`;
         console.log(`Recognized text: ${transcript}`);
 
         eel.process_command(transcript)(function(response) {
-            responseDiv.innerHTML += `<br>Response from AI: ${response}`;
+            responseDiv.append(document.createElement('br'));
+            const aiResponse = document.createElement('div');
+            aiResponse.textContent = `Response from AI: ${response}`;
+            responseDiv.append(aiResponse);
 
             const voices = synth.getVoices();
             if (voices.length > 0) {
@@ -33,7 +36,7 @@ if (SpeechRecognition && synth) {
     };
 
     recognition.onerror = (event) => {
-        responseDiv.innerHTML = `Error occurred: ${event.error}`;
+        responseDiv.textContent = `Error occurred: ${event.error}`;
         console.error(`Error: ${event.error}`);
 
         if (event.error === 'no-speech') {
@@ -44,7 +47,10 @@ if (SpeechRecognition && synth) {
 
     recognition.onend = () => {
         console.log('Recognition ended. Restarting...');
-        responseDiv.innerHTML += '<br>Listening stopped. Restarting...';
+        responseDiv.append(document.createElement('br'));
+        const restartMessage = document.createElement('span');
+        restartMessage.textContent = 'Listening stopped. Restarting...';
+        responseDiv.append(restartMessage);
         recognition.start(); 
     };
 
